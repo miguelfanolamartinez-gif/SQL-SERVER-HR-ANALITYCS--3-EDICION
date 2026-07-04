@@ -138,7 +138,7 @@ WHERE Arrest IN (
 )
 ORDER BY Arrest;
 
-
+-- 1. ¿Cuál es el volumen total de arrestos registrados en cada distrito operativo?
 SELECT 
     District,
     COUNT(*) AS TotalArrestos
@@ -146,6 +146,7 @@ FROM dbo.Stg_BPD_Arrests
 GROUP BY District
 ORDER BY TotalArrestos DESC;
 
+-- 2. ¿Cuáles son las 10 edades individuales de detenidos más frecuentes en el sistema?
 SELECT TOP 10
     Age,
     COUNT(*) AS CantidadCasos
@@ -154,6 +155,7 @@ WHERE Age IS NOT NULL
 GROUP BY Age
 ORDER BY CantidadCasos DESC;
 
+-- 3. ¿Cuántos arrestos se registraron por cada combinación de Sexo y Raza en la base de datos?
 SELECT 
     Sex,
     Race,
@@ -163,6 +165,7 @@ WHERE Sex IS NOT NULL AND Race IS NOT NULL
 GROUP BY Sex, Race
 ORDER BY TotalArrestos DESC;
 
+-- 4. ¿Qué distritos específicos superan de forma crítica la barrera de los 10,000 arrestos?
 SELECT 
     District,
     COUNT(*) AS TotalArrestos
@@ -171,6 +174,7 @@ GROUP BY District
 HAVING COUNT(*) > 10000
 ORDER BY TotalArrestos DESC;
 
+-- 5. ¿Cómo se distribuye el volumen de arrestos cuando se agrupa por rangos de edad personalizados?
 SELECT 
     CASE 
         WHEN Age < 18 THEN 'Menores (<18)'
@@ -200,6 +204,7 @@ WHERE ChargeDescription IS NOT NULL
 GROUP BY ChargeDescription
 ORDER BY Total_Arrestos DESC;
 
+-- 7. ¿Cuál es el balance de arrestos entre hombres y mujeres para los 10 delitos más comunes?
 SELECT TOP 10
     ChargeDescription,
     COUNT(CASE WHEN Sex = 'M' THEN 1 END) AS Arrestos_Hombres,
@@ -209,6 +214,7 @@ WHERE Sex IN ('M', 'F')
 GROUP BY ChargeDescription
 ORDER BY COUNT(*) DESC;
 
+-- 8. ¿Cuáles son los 3 vecindarios con mayor actividad de arrestos (Hotspots) dentro de cada distrito?
 WITH RankingVecindarios AS (
     SELECT 
         District,
@@ -226,15 +232,6 @@ SELECT
 FROM RankingVecindarios
 WHERE Posicion <= 3;
 
-WITH HistorialArrestos AS (
-    SELECT 
-        Arrest,
-        Post,
-        ArrestDate,
-        LAG(ArrestDate) OVER (PARTITION BY Post ORDER BY ArrestDate) AS FechaArrestoAnterior
-    FROM dbo.Stg_BPD_Arrests
-    WHERE Post <> 0 AND ArrestDate IS NOT NULL
-)
 
 -- Delitos donde el promedio de edad de los implicados es menor a 25 años
 SELECT 
@@ -313,4 +310,71 @@ SELECT
 FROM dbo.Stg_BPD_Arrests
 WHERE District <> 'No Registrado' AND Sex IN ('M', 'F')
 GROUP BY District
+ORDER BY Total_Arrestos DESC;
+
+
+-- Mostrar el volumen de cada distrito junto a los extremos de la ciudad
+WITH CTE_Volumen AS (
+    SELECT 
+        District AS Distrito,
+        COUNT(*) AS Total_Arrestos
+    FROM dbo.Stg_BPD_Arrests
+    WHERE District <> 'No Registrado'
+    GROUP BY District
+)
+SELECT 
+    Distrito,
+    Total_Arrestos,
+    -- Funciones de Ventana para capturar los extremos de toda la tabla
+    MAX(Total_Arrestos) OVER() AS Maximo_Arrestos_Ciudad,
+    MIN(Total_Arrestos) OVER() AS Minimo_Arrestos_Ciudad
+FROM CTE_Volumen
+ORDER BY Total_Arrestos DESC;
+
+--¿Cómo se distribuye la carga operativa entre los Turnos Policiales (Post) con mayor actividad?
+WITH CTE_PostOperativos AS (
+    SELECT 
+        Post AS Turno_Sector,
+        COUNT(*) AS Total_Arrestos
+    FROM dbo.Stg_BPD_Arrests
+    WHERE Post <> 0 AND Post IS NOT NULL
+    GROUP BY Post
+)
+SELECT 
+    Turno_Sector,
+    Total_Arrestos
+FROM CTE_PostOperativos
+WHERE Total_Arrestos > 1000
+ORDER BY Total_Arrestos DESC;
+--¿Cuál es el balance de arrestos clasificado por periodos de edad (Adultos vs Menores)?
+SELECT 
+    CASE 
+        WHEN Age < 18 THEN 'Población Menor de Edad'
+        ELSE 'Población Mayor de Edad'
+    END AS Tipo_Implicado,
+    COUNT(*) AS Total_Casos
+FROM dbo.Stg_BPD_Arrests
+WHERE Age > 0
+GROUP BY 
+    CASE 
+        WHEN Age < 18 THEN 'Población Menor de Edad'
+        ELSE 'Población Mayor de Edad'
+    END;
+--¿Qué vecindarios específicos registran un volumen de arrestos superior al promedio de la ciudad?
+SELECT 
+    Neighborhood AS Vecindario,
+    COUNT(*) AS Total_Arrestos
+FROM dbo.Stg_BPD_Arrests
+WHERE Neighborhood <> 'No Registrado'
+GROUP BY Neighborhood
+-- Subconsulta para calcular el promedio de arrestos por vecindario dinámicamente
+HAVING COUNT(*) > (
+    SELECT AVG(Arrestos_Vecindario)
+    FROM (
+        SELECT COUNT(*) AS Arrestos_Vecindario
+        FROM dbo.Stg_BPD_Arrests
+        WHERE Neighborhood <> 'No Registrado'
+        GROUP BY Neighborhood
+    ) AS Subtable
+)
 ORDER BY Total_Arrestos DESC;

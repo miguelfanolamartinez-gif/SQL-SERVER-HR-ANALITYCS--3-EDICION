@@ -6,7 +6,7 @@ El departamento de Inteligencia y Gestión Estratégica Policial busca optimizar
 
 ## 
 <p align="center">
-  <a href="https://www.linkedin.com/in/jhon-velasque/">
+  <a href="https://www.linkedin.com/in/miguel-fanola-122a532ba/">
     <img src="https://img.shields.io/badge/LinkedIn-0077B5?style=flat-square&logo=linkedin&logoColor=white" />
   </a>
 
@@ -41,7 +41,7 @@ Este proyecto individual tiene como objetivo demostrar habilidades de limpieza, 
 5. Clasificación del volumen de arrestos por Rangos de Edad personalizados
 6. ¿Cuáles son los 10 cargos criminales más frecuentes por los que se arresta a las personas?
 7. Matriz comparativa de arrestos por delito (Top 10) desglosado por Género
-8. Identificar los 3 Vecindarios con más arrestos dentro de cada Distrito (Hotspots)
+8. ¿Cómo se distribuye la carga operativa entre los Turnos Policiales (Post) con mayor actividad?
 9. Delitos donde el promedio de edad de los implicados es menor a 25 años
 10. Segmentación estratégica de distritos basada en volumen y edad promedio
 11. ¿Cuál es el volumen de arrestos por distrito y cómo se compara cada uno frente a los extremos (máximo y mínimo) de actividad en la ciudad?
@@ -262,29 +262,27 @@ ORDER BY COUNT(*) DESC;
 
 La matriz comparativa confirma que los hombres lideran de forma masiva casi todos los cargos del "Top 10", alcanzando su punto más alto en "Failure To Appear" con 11,553 casos masculinos frente a 3,820 femeninos. La única y notable excepción ocurre en el delito de "Prostitution-General", donde el patrón se invierte por completo, registrando una abrumadora mayoría de mujeres arrestadas (1,219 casos) en comparación con solo 212 hombres.
 
-### Pregunta #8: Identificar los 3 Vecindarios con más arrestos dentro de cada Distrito (Hotspots)
+### Pregunta #8: ¿Cómo se distribuye la carga operativa entre los Turnos Policiales (Post) con mayor actividad?
 ```sql
 
-WITH RankingVecindarios AS (
+WITH CTE_PostOperativos AS (
     SELECT 
-        District,
-        Neighborhood,
-        COUNT(*) AS TotalArrestos,
-        DENSE_RANK() OVER (PARTITION BY District ORDER BY COUNT(*) DESC) AS Posicion
+        Post AS Turno_Sector,
+        COUNT(*) AS Total_Arrestos
     FROM dbo.Stg_BPD_Arrests
-    WHERE District <> 'No Registrado' AND Neighborhood <> 'No Registrado'
-    GROUP BY District, Neighborhood
+    WHERE Post <> 0 AND Post IS NOT NULL
+    GROUP BY Post
 )
 SELECT 
-    District,
-    Neighborhood,
-    TotalArrestos
-FROM RankingVecindarios
-WHERE Posicion <= 3;
+    Turno_Sector,
+    Total_Arrestos
+FROM CTE_PostOperativos
+WHERE Total_Arrestos > 1000
+ORDER BY Total_Arrestos DESC;
 ```
 ![image](./picture/preg8.png)
 
-El análisis de funciones de ventana identifica con precisión quirúrgica los focos de calor (hotspots) dentro de cada jurisdicción. Por ejemplo, en el distrito Central, el vecindario de Downtown lidera críticamente con 3,666 arrestos, duplicando a UPTON. De igual forma, en el distrito Southern, destaca Brooklyn con 1,976 casos. Este desglose permite a la jefatura abandonar las estrategias genéricas por distrito y aplicar patrullajes tácticos focalizados directamente en las calles de estos vecindarios específicos.
+Esta consulta  permite consolidar y aislar eficazmente los sectores de patrullaje con mayor demanda de la ciudad. Los resultados muestran que el Turno/Sector 733 lidera la carga operativa con 1,784 arrestos, seguido muy de cerca por los sectores 223 y 224 (ambos por encima de las 1,500 detenciones). Este listado identifica con precisión los 11 cuadrantes críticos que superan el umbral de los 1,000 casos, sirviendo como base matemática para la asignación prioritaria de patrullas y recursos de apoyo en esas zonas de alta fricción.
 
 ### Pregunta #9: Delitos donde el promedio de edad de los implicados es menor a 25 años
 ```sql
@@ -367,6 +365,7 @@ GROUP BY District
 ORDER BY Total_Arrestos DESC;
 ```
 ![image](./picture/preg12.png)
+
 El KPI Porcentaje_Mujeres le permite a la jefatura entender la composición demográfica de los detenidos por zona. Si un distrito del norte tiene el doble de porcentaje de mujeres arrestadas en comparación con el promedio de la ciudad, se convierte en la prioridad número uno para la asignación de presupuestos de asistencia social preventiva y protocolos especializados de contención de género en sus calabozos.
 
 ### Conclusion
