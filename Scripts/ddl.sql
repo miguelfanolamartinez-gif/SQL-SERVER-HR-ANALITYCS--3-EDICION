@@ -194,7 +194,7 @@ GROUP BY
     END
 ORDER BY TotalArrestos DESC;
 
--- Los 10 cargos criminales más comunes --
+-- 6. Los 10 cargos criminales más comunes --
 SELECT TOP 10 
     ChargeDescription AS Cargo_Criminal,
     COUNT(*) AS Total_Arrestos
@@ -214,23 +214,21 @@ WHERE Sex IN ('M', 'F')
 GROUP BY ChargeDescription
 ORDER BY COUNT(*) DESC;
 
--- 8. ¿Cuáles son los 3 vecindarios con mayor actividad de arrestos (Hotspots) dentro de cada distrito?
-WITH RankingVecindarios AS (
+-- 8. ¿Cómo se distribuye la carga operativa entre los Turnos Policiales (Post) con mayor actividad?
+WITH CTE_PostOperativos AS (
     SELECT 
-        District,
-        Neighborhood,
-        COUNT(*) AS TotalArrestos,
-        DENSE_RANK() OVER (PARTITION BY District ORDER BY COUNT(*) DESC) AS Posicion
+        Post AS Turno_Sector,
+        COUNT(*) AS Total_Arrestos
     FROM dbo.Stg_BPD_Arrests
-    WHERE District <> 'No Registrado' AND Neighborhood <> 'No Registrado'
-    GROUP BY District, Neighborhood
+    WHERE Post <> 0 AND Post IS NOT NULL
+    GROUP BY Post
 )
 SELECT 
-    District,
-    Neighborhood,
-    TotalArrestos
-FROM RankingVecindarios
-WHERE Posicion <= 3;
+    Turno_Sector,
+    Total_Arrestos
+FROM CTE_PostOperativos
+WHERE Total_Arrestos > 1000
+ORDER BY Total_Arrestos DESC;
 
 
 -- Delitos donde el promedio de edad de los implicados es menor a 25 años
@@ -266,26 +264,8 @@ SELECT
 FROM CTE_MetricasDistrito
 ORDER BY Total_Arrestos DESC;
 
--- Análisis de impacto y ranking demográfico acumulado
-WITH CTE_PerfilDemografico AS (
-    SELECT 
-        Sex AS Sexo,
-        Race AS Raza,
-        COUNT(*) AS Total_Arrestos
-    FROM dbo.Stg_BPD_Arrests
-    WHERE Sex IN ('M', 'F') AND Race IS NOT NULL
-    GROUP BY Sex, Race
-)
-SELECT 
-    Sexo,
-    Raza,
-    Total_Arrestos,
-    DENSE_RANK() OVER (ORDER BY Total_Arrestos DESC) AS Ranking_Impacto,
-    ROUND((CAST(Total_Arrestos AS FLOAT) / SUM(Total_Arrestos) OVER()) * 100, 2) AS Porcentaje_Participacion
-FROM CTE_PerfilDemografico
-ORDER BY Total_Arrestos DESC;
+-- ¿Cuál es el volumen de arrestos por distrito y cómo se compara cada uno frente a los extremos (máximo y mínimo) de actividad en la ciudad?
 
--- Crear un ranking oficial de distritos por volumen operativo
 WITH CTE_RankingDistritos AS (
     SELECT 
         District AS Distrito,
@@ -300,7 +280,7 @@ SELECT
     Total_Arrestos
 FROM CTE_RankingDistritos;
 
--- Distribución operativa y balance de género por distrito
+-- Análisis de Vulnerabilidad de Género y Gravedad de Cargos por Distrito
 SELECT 
     District AS Distrito,
     COUNT(*) AS Total_Arrestos,
@@ -313,68 +293,4 @@ GROUP BY District
 ORDER BY Total_Arrestos DESC;
 
 
--- Mostrar el volumen de cada distrito junto a los extremos de la ciudad
-WITH CTE_Volumen AS (
-    SELECT 
-        District AS Distrito,
-        COUNT(*) AS Total_Arrestos
-    FROM dbo.Stg_BPD_Arrests
-    WHERE District <> 'No Registrado'
-    GROUP BY District
-)
-SELECT 
-    Distrito,
-    Total_Arrestos,
-    -- Funciones de Ventana para capturar los extremos de toda la tabla
-    MAX(Total_Arrestos) OVER() AS Maximo_Arrestos_Ciudad,
-    MIN(Total_Arrestos) OVER() AS Minimo_Arrestos_Ciudad
-FROM CTE_Volumen
-ORDER BY Total_Arrestos DESC;
 
---¿Cómo se distribuye la carga operativa entre los Turnos Policiales (Post) con mayor actividad?
-WITH CTE_PostOperativos AS (
-    SELECT 
-        Post AS Turno_Sector,
-        COUNT(*) AS Total_Arrestos
-    FROM dbo.Stg_BPD_Arrests
-    WHERE Post <> 0 AND Post IS NOT NULL
-    GROUP BY Post
-)
-SELECT 
-    Turno_Sector,
-    Total_Arrestos
-FROM CTE_PostOperativos
-WHERE Total_Arrestos > 1000
-ORDER BY Total_Arrestos DESC;
---¿Cuál es el balance de arrestos clasificado por periodos de edad (Adultos vs Menores)?
-SELECT 
-    CASE 
-        WHEN Age < 18 THEN 'Población Menor de Edad'
-        ELSE 'Población Mayor de Edad'
-    END AS Tipo_Implicado,
-    COUNT(*) AS Total_Casos
-FROM dbo.Stg_BPD_Arrests
-WHERE Age > 0
-GROUP BY 
-    CASE 
-        WHEN Age < 18 THEN 'Población Menor de Edad'
-        ELSE 'Población Mayor de Edad'
-    END;
---¿Qué vecindarios específicos registran un volumen de arrestos superior al promedio de la ciudad?
-SELECT 
-    Neighborhood AS Vecindario,
-    COUNT(*) AS Total_Arrestos
-FROM dbo.Stg_BPD_Arrests
-WHERE Neighborhood <> 'No Registrado'
-GROUP BY Neighborhood
--- Subconsulta para calcular el promedio de arrestos por vecindario dinámicamente
-HAVING COUNT(*) > (
-    SELECT AVG(Arrestos_Vecindario)
-    FROM (
-        SELECT COUNT(*) AS Arrestos_Vecindario
-        FROM dbo.Stg_BPD_Arrests
-        WHERE Neighborhood <> 'No Registrado'
-        GROUP BY Neighborhood
-    ) AS Subtable
-)
-ORDER BY Total_Arrestos DESC;
